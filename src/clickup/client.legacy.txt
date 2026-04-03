@@ -1,0 +1,107 @@
+import type { AppConfig } from "../config/env.js";
+import type { ClickUpCustomField, HttpClient } from "../types.js";
+import { FetchHttpClient } from "../utils/http.js";
+import { log } from "../utils/logger.js";
+
+export class ClickUpClient {
+  constructor(
+    private readonly config: AppConfig,
+    private readonly httpClient: HttpClient = new FetchHttpClient()
+  ) {}
+
+  async getTasks(page = 0): Promise<{
+    tasks: Array<{ id: string; name: string; description?: string }>;
+    lastPage: boolean;
+  }> {
+    log("INFO", "Fetching ClickUp task page", {
+      listId: this.config.CLICKUP_LIST_ID,
+      page
+    });
+    const response = await this.httpClient.get<{
+      tasks?: Array<{ id: string; name: string; description?: string }>;
+      lastPage?: boolean;
+      last_page?: boolean;
+    }>(
+      `https://api.clickup.com/api/v2/list/${this.config.CLICKUP_LIST_ID}/task?page=${page}`,
+      {
+        headers: {
+          Authorization: this.config.CLICKUP_API_TOKEN
+        },
+        label: `ClickUp list tasks page:${page}`,
+        timeoutMs: 30000
+      }
+    );
+
+    const normalized = {
+      tasks: response.tasks ?? [],
+      lastPage: response.lastPage === true || response.last_page === true
+    };
+
+    log("INFO", "Normalized ClickUp task page response", {
+      page,
+      taskCount: normalized.tasks.length,
+      lastPage: normalized.lastPage,
+      responseKeys: Object.keys(response)
+    });
+
+    return normalized;
+  }
+
+  async createTask(body: unknown): Promise<{ id: string }> {
+    log("INFO", "Creating ClickUp task", {
+      listId: this.config.CLICKUP_LIST_ID
+    });
+    return this.httpClient.post(`https://api.clickup.com/api/v2/list/${this.config.CLICKUP_LIST_ID}/task`, {
+      headers: {
+        Authorization: this.config.CLICKUP_API_TOKEN
+      },
+      label: "ClickUp create task",
+      timeoutMs: 30000,
+      body
+    });
+  }
+
+  async getAccessibleCustomFields(): Promise<ClickUpCustomField[]> {
+    log("INFO", "Fetching ClickUp accessible custom fields", {
+      listId: this.config.CLICKUP_LIST_ID
+    });
+
+    const response = await this.httpClient.get<{ fields?: ClickUpCustomField[] }>(
+      `https://api.clickup.com/api/v2/list/${this.config.CLICKUP_LIST_ID}/field`,
+      {
+        headers: {
+          Authorization: this.config.CLICKUP_API_TOKEN
+        },
+        label: "ClickUp accessible custom fields",
+        timeoutMs: 30000
+      }
+    );
+
+    const fields = response.fields ?? [];
+    log("INFO", "Fetched ClickUp accessible custom fields", {
+      fieldCount: fields.length,
+      fieldIds: fields.map((field) => ({ id: field.id, name: field.name, type: field.type }))
+    });
+
+    return fields;
+  }
+
+  async setCustomFieldValue(taskId: string, fieldId: string, body: unknown): Promise<void> {
+    log("INFO", "Setting ClickUp custom field value", {
+      taskId,
+      fieldId
+    });
+
+    await this.httpClient.post(
+      `https://api.clickup.com/api/v2/task/${taskId}/field/${fieldId}`,
+      {
+        headers: {
+          Authorization: this.config.CLICKUP_API_TOKEN
+        },
+        label: `ClickUp set field:${fieldId}`,
+        timeoutMs: 30000,
+        body
+      }
+    );
+  }
+}

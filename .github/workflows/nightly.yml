@@ -1,0 +1,82 @@
+name: Nightly LeetCode Tracker
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: leetcode-tracker-nightly
+  cancel-in-progress: false
+
+jobs:
+  run-tracker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore Alert State Cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .tracker-alert-state.json
+          key: ${{ runner.os }}-tracker-alert-state-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-tracker-alert-state-
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tracker
+        shell: bash
+        env:
+          LEETCODE_SESSION: ${{ secrets.LEETCODE_SESSION }}
+          LEETCODE_CSRF_TOKEN: ${{ secrets.LEETCODE_CSRF_TOKEN }}
+          LEETCODE_USERNAME: ${{ secrets.LEETCODE_USERNAME }}
+          AI_PROVIDER: ${{ secrets.AI_PROVIDER }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
+          OPENROUTER_MAX_TOKENS: ${{ secrets.OPENROUTER_MAX_TOKENS }}
+          OPENROUTER_SITE_URL: ${{ secrets.OPENROUTER_SITE_URL }}
+          OPENROUTER_APP_NAME: ${{ secrets.OPENROUTER_APP_NAME }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+          OPENAI_MAX_OUTPUT_TOKENS: ${{ secrets.OPENAI_MAX_OUTPUT_TOKENS }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
+          ENABLE_FAILURE_ALERTS: ${{ secrets.ENABLE_FAILURE_ALERTS }}
+          ALERT_DEDUPE_HOURS: ${{ secrets.ALERT_DEDUPE_HOURS }}
+          ALERT_STATE_PATH: .tracker-alert-state.json
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_AUTO_CREATE_DATABASE: ${{ secrets.NOTION_AUTO_CREATE_DATABASE }}
+          MAX_PROBLEMS_PER_RUN: ${{ secrets.MAX_PROBLEMS_PER_RUN }}
+          PROCESS_CONCURRENCY: ${{ secrets.PROCESS_CONCURRENCY }}
+          LOOKBACK_HOURS: ${{ secrets.LOOKBACK_HOURS }}
+        run: |
+          set -o pipefail
+          npm run start 2>&1 | tee tracker-run.log
+
+      - name: Upload run log artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tracker-run-log-${{ github.run_id }}
+          path: tracker-run.log
+          if-no-files-found: ignore
+
+      - name: Save Alert State Cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .tracker-alert-state.json
+          key: ${{ runner.os }}-tracker-alert-state-${{ github.run_id }}

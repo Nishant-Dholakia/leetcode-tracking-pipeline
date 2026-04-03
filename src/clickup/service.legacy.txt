@@ -1,0 +1,193 @@
+import type { AppConfig } from "../config/env.js";
+import type { AiAnalysis, ClickUpCustomField, NormalizedProblem } from "../types.js";
+import { buildAnalysisMarkdown } from "../ai/provider.js";
+import { log } from "../utils/logger.js";
+import { retryOnce } from "../utils/retry.js";
+import { ClickUpClient } from "./client.js";
+
+export class ClickUpService {
+  private static readonly MAX_DUPLICATE_SCAN_PAGES = 100;
+  private accessibleFieldsCache?: Map<string, ClickUpCustomField>;
+
+  constructor(
+    private readonly config: AppConfig,
+    private readonly client = new ClickUpClient(config)
+  ) {}
+
+  async hasProblem(problemKey: string): Promise<boolean> {
+    let page = 0;
+    log("INFO", "Checking ClickUp for existing problem", { problemKey });
+
+    while (true) {
+      const response = await this.client.getTasks(page);
+      log("INFO", "Scanned ClickUp task page for duplicate", {
+        problemKey,
+        page,
+        taskCount: response.tasks.length,
+        lastPage: response.lastPage
+      });
+      const match = response.tasks.some((task) => task.description?.includes(problemKey));
+      if (match) {
+        log("INFO", "Found existing ClickUp problem", { problemKey, page });
+        return true;
+      }
+
+      if (response.tasks.length === 0) {
+        log("INFO", "Stopping duplicate scan on empty ClickUp page", {
+          problemKey,
+          page
+        });
+        return false;
+      }
+
+      if (response.lastPage) {
+        log("INFO", "Stopping duplicate scan on ClickUp last page", {
+          problemKey,
+          page
+        });
+        return false;
+      }
+
+      if (page + 1 >= ClickUpService.MAX_DUPLICATE_SCAN_PAGES) {
+        throw new Error(
+          `ClickUp duplicate scan exceeded ${ClickUpService.MAX_DUPLICATE_SCAN_PAGES} pages for ${problemKey}`
+        );
+      }
+
+      page += 1;
+    }
+  }
+
+  async createProblemTask(problem: NormalizedProblem, analysis: AiAnalysis): Promise<void> {
+    const markdown = buildAnalysisMarkdown(problem, analysis);
+    const description = [
+      `Problem Key: ${problem.problemKey}`,
+      `Question Number: ${problem.questionFrontendId}`,
+      `Question Slug: ${problem.titleSlug}`,
+      `Difficulty: ${problem.difficulty}`,
+      `Topic Tags: ${problem.topicTags.join(", ")}`,
+      `Date Solved: ${problem.solvedAt}`,
+      "",
+      "## Problem URL",
+      problem.problemUrl,
+      "",
+      "## My Solution",
+      "```",
+      problem.solutionCode,
+      "```",
+      "",
+      "## AI Summary",
+      markdown
+    ].join("\n");
+
+    const payload = {
+      name: `#${problem.questionFrontendId} ${problem.title}`,
+      description,
+      tags: problem.topicTags
+    };
+
+    log("INFO", "Submitting ClickUp base task payload", {
+      problemKey: problem.problemKey,
+      questionFrontendId: problem.questionFrontendId,
+      titleSlug: problem.titleSlug,
+      topicTagCount: problem.topicTags.length
+    });
+    const createdTask = await retryOnce(async () => this.client.createTask(payload), 5000);
+    log("INFO", "Base ClickUp task created", {
+      taskId: createdTask.id,
+      problemKey: problem.problemKey
+    });
+
+    const fieldValues = [
+      { fieldId: this.config.CLICKUP_FIELD_QUESTION_NUMBER, value: problem.questionFrontendId },
+      { fieldId: this.config.CLICKUP_FIELD_QUESTION_SLUG, value: problem.titleSlug },
+      { fieldId: this.config.CLICKUP_FIELD_DIFFICULTY, value: problem.difficulty },
+      { fieldId: this.config.CLICKUP_FIELD_TOPIC_TAGS, value: problem.topicTags },
+      {
+        fieldId: this.config.CLICKUP_FIELD_DATE_SOLVED,
+        value: new Date(problem.solvedAt).getTime()
+      }
+    ];
+
+    for (const item of fieldValues) {
+      const requestBody = await this.buildFieldUpdatePayload(item.fieldId, item.value);
+      log("INFO", "Submitting ClickUp custom field update", {
+        taskId: createdTask.id,
+        fieldId: item.fieldId,
+        requestBody
+      });
+
+      await retryOnce(
+        async () => this.client.setCustomFieldValue(createdTask.id, item.fieldId, requestBody),
+        5000
+      );
+    }
+
+    log("INFO", "ClickUp task created successfully", {
+      problemKey: problem.problemKey
+    });
+  }
+
+  private async getAccessibleFieldsMap(): Promise<Map<string, ClickUpCustomField>> {
+    if (this.accessibleFieldsCache) {
+      return this.accessibleFieldsCache;
+    }
+
+    const fields = await this.client.getAccessibleCustomFields();
+    this.accessibleFieldsCache = new Map(fields.map((field) => [field.id, field]));
+    return this.accessibleFieldsCache;
+  }
+
+  private async buildFieldUpdatePayload(fieldId: string, value: unknown): Promise<unknown> {
+    const fields = await this.getAccessibleFieldsMap();
+    const field = fields.get(fieldId);
+
+    if (!field) {
+      throw new Error(`ClickUp custom field metadata not found for field ${fieldId}`);
+    }
+
+    log("INFO", "Preparing ClickUp custom field payload", {
+      fieldId,
+      fieldName: field.name,
+      fieldType: field.type
+    });
+
+    switch (field.type) {
+      case "short_text":
+      case "text":
+      case "url":
+      case "email":
+      case "phone":
+        return { value: String(value) };
+      case "number":
+      case "currency":
+        return { value: Number(value) };
+      case "date":
+        return { value: Number(value), value_options: { time: true } };
+      case "drop_down": {
+        const optionId = this.findOptionId(field, String(value));
+        return { value: optionId };
+      }
+      case "labels": {
+        const values = Array.isArray(value) ? value.map((item) => this.findOptionId(field, String(item))) : [];
+        return { value: values };
+      }
+      default:
+        return { value };
+    }
+  }
+
+  private findOptionId(field: ClickUpCustomField, rawValue: string): string {
+    const options = field.type_config?.options ?? [];
+    const match = options.find((option) => {
+      const candidate = option.name ?? option.label ?? "";
+      return candidate.toLowerCase() === rawValue.toLowerCase();
+    });
+
+    if (!match?.id) {
+      throw new Error(`No matching ClickUp option found for field ${field.id} and value "${rawValue}"`);
+    }
+
+    return match.id;
+  }
+}
