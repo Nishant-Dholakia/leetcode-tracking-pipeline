@@ -15,10 +15,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Restore Alert State Cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .tracker-alert-state.json
           key: ${{ runner.os }}-tracker-alert-state-${{ github.run_id }}
@@ -26,7 +26,7 @@ jobs:
             ${{ runner.os }}-tracker-alert-state-
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
@@ -68,7 +68,7 @@ jobs:
 
       - name: Upload run log artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: tracker-run-log-${{ github.run_id }}
           path: tracker-run.log
@@ -76,7 +76,7 @@ jobs:
 
       - name: Save Alert State Cache
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .tracker-alert-state.json
           key: ${{ runner.os }}-tracker-alert-state-${{ github.run_id }}
