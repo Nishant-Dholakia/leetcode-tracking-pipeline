@@ -6,8 +6,9 @@ Nightly automation that fetches LeetCode problems solved in the previous 24 hour
 
 - Fetches accepted LeetCode submissions for one user
 - Enriches each item with question metadata and submission code
-- Generates structured AI analysis through OpenRouter or OpenAI
+- Generates structured AI analysis through OpenRouter
 - Creates one Notion database page per problem slug
+- Syncs only submissions you explicitly mark for Notion
 - Runs nightly through GitHub Actions
 
 ## Setup
@@ -16,6 +17,30 @@ Nightly automation that fetches LeetCode problems solved in the previous 24 hour
 2. Fill in all required credentials and Notion settings
 3. Install dependencies with `npm install`
 4. Run locally with `npm run start`
+
+## Selecting Which Problems Sync
+
+The tracker is opt-in. A solved problem is added only when the first non-empty line of your submitted code is the exact sync marker for that language.
+
+Marker keyword:
+
+- `ADD_TO_NOTION`
+
+Examples:
+
+- TypeScript / Java / C++ / JavaScript / Go / Rust: `//ADD_TO_NOTION`
+- Python / Ruby / Bash / PowerShell / Perl: `#ADD_TO_NOTION`
+- SQL / Lua / Haskell: `--ADD_TO_NOTION`
+- Erlang / Prolog / Matlab: `%ADD_TO_NOTION`
+- Lisp-style languages: `;ADD_TO_NOTION`
+
+Rules:
+
+- The marker must be on the first non-empty line.
+- The marker must match exactly.
+- Submissions without the marker are ignored.
+- The marker line is removed before the code is sent to AI or stored in Notion.
+- If a language does not have marker support yet, that submission is skipped.
 
 ## Deployment
 
@@ -32,15 +57,11 @@ Recommended repository secrets:
 - `LEETCODE_SESSION`
 - `LEETCODE_CSRF_TOKEN`
 - `LEETCODE_USERNAME`
-- `AI_PROVIDER`
 - `OPENROUTER_API_KEY`
 - `OPENROUTER_MODEL`
 - `OPENROUTER_MAX_TOKENS`
 - `OPENROUTER_SITE_URL`
 - `OPENROUTER_APP_NAME`
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL`
-- `OPENAI_MAX_OUTPUT_TOKENS`
 - `NOTION_API_KEY`
 - `NOTION_PARENT_PAGE_ID`
 - `NOTION_DATABASE_ID`
@@ -88,4 +109,4 @@ The Notion database is designed for interview preparation and includes metadata 
 - The GitHub Actions schedule is configured for `00:00 UTC`
 - Historical backfill is intentionally not part of this MVP
 - Notion dedupe uses `titleSlug`
-- `AI_PROVIDER=openrouter` is the default path in `.env.example`
+- OpenRouter is the only AI provider in the current implementation

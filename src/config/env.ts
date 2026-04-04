@@ -31,10 +31,6 @@ const envSchema = z
   LEETCODE_SESSION: z.string().min(1),
   LEETCODE_CSRF_TOKEN: z.string().min(1),
   LEETCODE_USERNAME: z.string().min(1),
-  AI_PROVIDER: z.enum(["openrouter", "openai"]).default("openrouter"),
-  OPENAI_API_KEY: optionalNonEmptyString,
-  OPENAI_MODEL: z.string().min(1).default("gpt-4.1-mini"),
-  OPENAI_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().max(8000).default(1200),
   OPENROUTER_API_KEY: optionalNonEmptyString,
   OPENROUTER_MODEL: z.string().min(1).default("openai/gpt-4.1-mini"),
   OPENROUTER_MAX_TOKENS: z.coerce.number().int().positive().max(8000).default(1200),
@@ -61,19 +57,11 @@ const envSchema = z
   LOOKBACK_HOURS: z.coerce.number().int().positive().max(168).default(24)
 })
   .superRefine((value, ctx) => {
-    if (value.AI_PROVIDER === "openrouter" && !value.OPENROUTER_API_KEY) {
+    if (!value.OPENROUTER_API_KEY) {
       ctx.addIssue({
         code: ZodIssueCode.custom,
         path: ["OPENROUTER_API_KEY"],
-        message: "Required when AI_PROVIDER=openrouter"
-      });
-    }
-
-    if (value.AI_PROVIDER === "openai" && !value.OPENAI_API_KEY) {
-      ctx.addIssue({
-        code: ZodIssueCode.custom,
-        path: ["OPENAI_API_KEY"],
-        message: "Required when AI_PROVIDER=openai"
+        message: "Required for OpenRouter analysis"
       });
     }
 

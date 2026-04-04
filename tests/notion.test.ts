@@ -80,4 +80,51 @@ describe("NotionService", () => {
     );
     expect(client.createPage.mock.calls[0][0].children[3].code.language).toBe("plain text");
   });
+
+  it("splits long solution code into safe Notion code blocks", async () => {
+    const client = {
+      queryDatabase: vi.fn(),
+      createDatabase: vi.fn(),
+      createPage: vi.fn().mockResolvedValue({ id: "page-1", properties: {} })
+    };
+
+    const service = new NotionService(createConfig(), client as never);
+    const longLine = "a".repeat(2020);
+
+    await service.createProblemEntry(
+      createProblem({ solutionCode: longLine }),
+      createAnalysis()
+    );
+
+    const payload = client.createPage.mock.calls[0][0];
+    const codeBlocks = payload.children.filter((child: { type?: string }) => child.type === "code");
+
+    expect(codeBlocks.length).toBeGreaterThan(1);
+    for (const block of codeBlocks) {
+      for (const item of block.code.rich_text) {
+        expect(item.text.content.length).toBeLessThanOrEqual(1800);
+      }
+    }
+  });
+
+  it("splits oversized title text into safe rich text chunks", async () => {
+    const client = {
+      queryDatabase: vi.fn(),
+      createDatabase: vi.fn(),
+      createPage: vi.fn().mockResolvedValue({ id: "page-1", properties: {} })
+    };
+
+    const service = new NotionService(createConfig(), client as never);
+
+    await service.createProblemEntry(
+      createProblem({ title: "T".repeat(2500) }),
+      createAnalysis()
+    );
+
+    const titleChunks = client.createPage.mock.calls[0][0].properties.Title.title;
+    expect(titleChunks.length).toBeGreaterThan(1);
+    for (const chunk of titleChunks) {
+      expect(chunk.text.content.length).toBeLessThanOrEqual(1800);
+    }
+  });
 });

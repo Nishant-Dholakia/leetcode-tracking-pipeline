@@ -26,8 +26,8 @@ export async function runPipeline(
     lookbackHours: config.LOOKBACK_HOURS,
     maxProblemsPerRun: config.MAX_PROBLEMS_PER_RUN,
     processConcurrency: config.PROCESS_CONCURRENCY,
-    aiProvider: config.AI_PROVIDER,
-    aiModel: config.AI_PROVIDER === "openrouter" ? config.OPENROUTER_MODEL : config.OPENAI_MODEL,
+    aiProvider: "openrouter",
+    aiModel: config.OPENROUTER_MODEL,
     notionDatabaseId: config.NOTION_DATABASE_ID ?? "auto-create"
   });
 

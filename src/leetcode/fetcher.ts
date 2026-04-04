@@ -44,6 +44,129 @@ interface SubmissionDetailsData {
   } | null;
 }
 
+const SYNC_MARKER_KEYWORD = "ADD_TO_NOTION";
+
+function normalizeLanguageName(language: string): string {
+  return language.trim().toLowerCase();
+}
+
+function markerFormsForLanguage(language: string): string[] {
+  const normalized = normalizeLanguageName(language);
+
+  const slashSlashLanguages = new Set([
+    "c",
+    "c++",
+    "cpp",
+    "c#",
+    "csharp",
+    "java",
+    "javascript",
+    "js",
+    "typescript",
+    "ts",
+    "golang",
+    "go",
+    "kotlin",
+    "swift",
+    "rust",
+    "scala",
+    "dart",
+    "php",
+    "objective-c",
+    "objectivec",
+    "groovy"
+  ]);
+
+  const hashLanguages = new Set([
+    "python",
+    "python3",
+    "py",
+    "ruby",
+    "shell",
+    "bash",
+    "zsh",
+    "powershell",
+    "perl",
+    "r",
+    "julia",
+    "elixir",
+    "nix"
+  ]);
+
+  const dashDashLanguages = new Set([
+    "sql",
+    "mysql",
+    "mssql",
+    "ms sql server",
+    "postgresql",
+    "postgres",
+    "sqlite",
+    "mariadb",
+    "oracle",
+    "lua",
+    "haskell",
+    "ada"
+  ]);
+
+  const percentLanguages = new Set(["erlang", "matlab", "octave", "prolog"]);
+  const semicolonLanguages = new Set(["lisp", "common lisp", "clojure", "scheme", "racket"]);
+
+  if (slashSlashLanguages.has(normalized)) {
+    return [`//${SYNC_MARKER_KEYWORD}`];
+  }
+
+  if (hashLanguages.has(normalized)) {
+    return [`#${SYNC_MARKER_KEYWORD}`];
+  }
+
+  if (dashDashLanguages.has(normalized)) {
+    return [`--${SYNC_MARKER_KEYWORD}`];
+  }
+
+  if (percentLanguages.has(normalized)) {
+    return [`%${SYNC_MARKER_KEYWORD}`];
+  }
+
+  if (semicolonLanguages.has(normalized)) {
+    return [`;${SYNC_MARKER_KEYWORD}`];
+  }
+
+  if (normalized === "html" || normalized === "xml") {
+    return [`<!--${SYNC_MARKER_KEYWORD}-->`];
+  }
+
+  return [];
+}
+
+function splitLines(code: string): string[] {
+  return code.split(/\r?\n/);
+}
+
+function detectMarkerLineIndex(lines: string[], markers: string[]): number {
+  for (let index = 0; index < lines.length; index += 1) {
+    const trimmed = lines[index]?.trim().replace(/^\uFEFF/, "");
+    if (!trimmed) {
+      continue;
+    }
+
+    return markers.includes(trimmed) ? index : -1;
+  }
+
+  return -1;
+}
+
+function stripMarkerLine(code: string, markerLineIndex: number): string {
+  const lines = splitLines(code);
+  const cleaned = lines.filter((_, index) => index !== markerLineIndex);
+  const nextIndex = markerLineIndex < cleaned.length ? markerLineIndex : -1;
+
+  if (nextIndex >= 0 && cleaned[nextIndex].trim() === "") {
+    cleaned.splice(nextIndex, 1);
+  }
+
+  return cleaned.join("\n");
+}
+
 export class LeetCodeFetcher {
   constructor(
     private readonly config: AppConfig,
@@ -97,7 +220,7 @@ export class LeetCodeFetcher {
         });
         problems.push(normalized);
       } else {
-        log("WARN", "Submission enrichment returned no usable problem", {
+        log("INFO", "Submission was not selected for syncing", {
           submissionId: submission.id,
           titleSlug: submission.titleSlug
         });
@@ -111,27 +234,63 @@ export class LeetCodeFetcher {
   }
 
   async enrichSubmission(submission: RecentSubmission): Promise<NormalizedProblem | null> {
-    log("INFO", "Fetching LeetCode problem details and submission code", {
+    log("INFO", "Fetching LeetCode submission code", {
       submissionId: submission.id,
       titleSlug: submission.titleSlug
     });
-    const [questionDetailsData, submissionDetailsData] = await Promise.all([
-      this.client.query<QuestionDetailsData>(QUESTION_DETAILS_QUERY, {
-        titleSlug: submission.titleSlug
-      }),
-      this.client.query<SubmissionDetailsData>(SUBMISSION_DETAILS_QUERY, {
-        submissionId: Number(submission.id)
-      })
-    ]);
-
-    const question = questionDetailsData.question;
+    const submissionDetailsData = await this.client.query<SubmissionDetailsData>(SUBMISSION_DETAILS_QUERY, {
+      submissionId: Number(submission.id)
+    });
     const details = submissionDetailsData.submissionDetails;
 
-    if (!question || !details?.code) {
-      log("WARN", "Missing LeetCode details required for normalization", {
+    if (!details?.code) {
+      log("WARN", "Missing LeetCode submission code required for normalization", {
         submissionId: submission.id,
-        hasQuestion: Boolean(question),
         hasCode: Boolean(details?.code)
+      });
+      return null;
+    }
+
+    const language = details.lang?.verboseName ?? submission.lang;
+    const markers = markerFormsForLanguage(language);
+
+    if (markers.length === 0) {
+      log("INFO", "Submission skipped because marker syntax is unsupported for language", {
+        submissionId: submission.id,
+        titleSlug: submission.titleSlug,
+        language
+      });
+      return null;
+    }
+
+    const codeLines = splitLines(details.code);
+    const markerLineIndex = detectMarkerLineIndex(codeLines, markers);
+
+    if (markerLineIndex === -1) {
+      log("INFO", "Submission skipped because sync marker was not found", {
+        submissionId: submission.id,
+        titleSlug: submission.titleSlug,
+        language,
+        expectedMarkers: markers
+      });
+      return null;
+    }
+
+    const cleanedSolutionCode = stripMarkerLine(details.code, markerLineIndex);
+
+    log("INFO", "Fetching LeetCode problem details for marked submission", {
+      submissionId: submission.id,
+      titleSlug: submission.titleSlug
+    });
+    const questionDetailsData = await this.client.query<QuestionDetailsData>(QUESTION_DETAILS_QUERY, {
+      titleSlug: submission.titleSlug
+    });
+    const question = questionDetailsData.question;
+
+    if (!question) {
+      log("WARN", "Missing LeetCode question details required for normalization", {
+        submissionId: submission.id,
+        titleSlug: submission.titleSlug
       });
       return null;
     }
@@ -149,8 +308,8 @@ export class LeetCodeFetcher {
       difficulty: question.difficulty,
       topicTags: question.topicTags.map((tag) => tag.name),
       solvedAt: toIsoFromUnixSeconds(Number(submission.timestamp)),
-      language: details.lang?.verboseName ?? submission.lang,
-      solutionCode: details.code,
+      language,
+      solutionCode: cleanedSolutionCode,
       problemDescription: question.content
     };
   }

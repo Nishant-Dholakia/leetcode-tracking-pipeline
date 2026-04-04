@@ -5,16 +5,69 @@ import { retryOnce } from "../utils/retry.js";
 import { NotionClient } from "./client.js";
 
 function richText(text: string) {
-  return [
-    {
-      type: "text",
-      text: {
-        content: text
-      }
+  return chunkText(text).map((chunk) => ({
+    type: "text",
+    text: {
+      content: chunk
     }
-  ];
+  }));
 }
 
+function splitIntoBlocks(text: string, chunkSize = 1800): string[] {
+  const lines = text.split(/\r?\n/);
+  const blocks: string[] = [];
+  let current = "";
+
+  for (const line of lines) {
+    const candidate = current.length === 0 ? line : `${current}\n${line}`;
+    if (candidate.length <= chunkSize) {
+      current = candidate;
+      continue;
+    }
+
+    if (current.length > 0) {
+      blocks.push(current);
+      current = "";
+    }
+
+    if (line.length <= chunkSize) {
+      current = line;
+      continue;
+    }
+
+    for (let index = 0; index < line.length; index += chunkSize) {
+      blocks.push(line.slice(index, index + chunkSize));
+    }
+  }
+
+  if (current.length > 0) {
+    blocks.push(current);
+  }
+
+  return blocks.length > 0 ? blocks : [""];
+}
+
+function paragraphBlocks(text: string): unknown[] {
+  return splitIntoBlocks(text).map((chunk) => ({
+    object: "block",
+    type: "paragraph",
+    paragraph: {
+      rich_text: richText(chunk)
+    }
+  }));
+}
+
+function codeBlocks(text: string, language: string): unknown[] {
+  return splitIntoBlocks(text).map((chunk) => ({
+    object: "block",
+    type: "code",
+    code: {
+      caption: [],
+      rich_text: richText(chunk),
+      language
+    }
+  }));
+}
 function chunkText(text: string, chunkSize = 1800): string[] {
   const chunks: string[] = [];
   for (let index = 0; index < text.length; index += chunkSize) {
@@ -276,15 +329,15 @@ export class NotionService implements ProblemStorage {
 
     return [
       this.heading("Problem URL"),
-      this.paragraph(problem.problemUrl),
+      ...paragraphBlocks(problem.problemUrl),
       this.heading("My Solution"),
-      this.code(problem.solutionCode, toNotionCodeLanguage(problem.language)),
+      ...codeBlocks(problem.solutionCode, toNotionCodeLanguage(problem.language)),
       this.heading("AI Summary"),
-      ...chunkText(aiSummary).map((chunk) => this.paragraph(chunk)),
+      ...paragraphBlocks(aiSummary),
       this.heading("Revision Notes"),
-      this.paragraph("Add your revision notes here."),
+      ...paragraphBlocks("Add your revision notes here."),
       this.heading("Mistakes / Learnings"),
-      this.paragraph("Capture mistakes, patterns, and interview takeaways here.")
+      ...paragraphBlocks("Capture mistakes, patterns, and interview takeaways here.")
     ];
   }
 

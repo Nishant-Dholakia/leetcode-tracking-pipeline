@@ -20,7 +20,7 @@ export function classifyFailure(reason: string): { stage: AlertStage; classifica
     return { stage: "analysis", classification: "analysis/quota" };
   }
 
-  if (normalized.includes("openrouter response did not contain") || normalized.includes("openai response did not contain") || normalized.includes("malformed ai response")) {
+  if (normalized.includes("openrouter response did not contain") || normalized.includes("malformed ai response")) {
     return { stage: "analysis", classification: "analysis/response" };
   }
 
