@@ -183,10 +183,11 @@ You need:
 
 How to get it:
 
-1. Create or log in to your OpenRouter account
-2. Open the API keys section
-3. Create a new key
-4. Copy it into `.env`
+1. Open [OpenRouter API Keys](https://openrouter.ai/keys)
+2. Create or log in to your OpenRouter account
+3. Click `Create Key` or `+ Create new key`
+4. Copy the generated key
+5. Paste it into `.env`
 
 Example:
 
@@ -250,10 +251,12 @@ You need:
 
 How to get it:
 
-1. Create or log in to your Resend account
-2. Open the API keys section
-3. Create a key
-4. Copy it into `.env`
+1. Open [Resend API Keys](https://resend.com/api-keys)
+2. Create or log in to your Resend account
+3. Click `+ Create API Key`
+4. Give it a name (e.g., `LeetCode Tracker`)
+5. Copy the generated key
+6. Paste it into `.env`
 
 Example:
 
@@ -306,11 +309,12 @@ This is the page where the tracker will create or use the database.
 
 #### Step B: Create a Notion integration
 
-1. Open Notion integrations - `https://www.notion.so/profile/integrations/internal`
-2. Create a new internal integration
+1. Open [Notion Integrations](https://www.notion.so/profile/integrations/internal)
+2. Click `+ New integration`
 3. Give it a name like `LeetCode Tracker`
 4. Select the correct workspace
-5. Copy the integration token
+5. Accept terms and click `Submit`
+6. Copy the `Internal Integration Token`
 
 That token becomes:
 
@@ -629,13 +633,13 @@ This means the project does not need a server running 24/7.
 
 ## 16. Useful Files in the Project
 
-- [.env.example](d:\Projects\demos\leetcode-automation\.env.example)
+- [.env.example](.env.example)
   Template for environment variables
-- [README.md](d:\Projects\demos\leetcode-automation\README.md)
+- [README.md](README.md)
   General project overview
-- [.github/workflows/nightly.yml](d:\Projects\demos\leetcode-automation\.github\workflows\nightly.yml)
+- [.github/workflows/nightly.yml](.github/workflows/nightly.yml)
   Nightly GitHub Actions workflow
-- [.tracker-alert-state.json](d:\Projects\demos\leetcode-automation\.tracker-alert-state.json)
+- [.tracker-alert-state.json](.tracker-alert-state.json)
   Local alert dedupe state
 
 ## 17. Common Problems and Fixes
