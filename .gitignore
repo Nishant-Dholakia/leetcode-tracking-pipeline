@@ -3,3 +3,5 @@ dist/
 .env
 coverage/
 *.log
+PLAN.md
+PROJECT_REPORT.md
