@@ -13,10 +13,14 @@ Nightly automation that fetches LeetCode problems solved in the previous 24 hour
 
 ## Setup
 
+Quick start:
+
 1. Copy `.env.example` to `.env`
 2. Fill in all required credentials and Notion settings
 3. Install dependencies with `npm install`
 4. Run locally with `npm run start`
+
+For complete setup instructions, API key retrieval, Notion configuration, and GitHub Actions deployment, see [SETUP.md](SETUP.md).
 
 ## Selecting Which Problems Sync
 
